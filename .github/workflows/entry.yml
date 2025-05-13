@@ -1,29 +1,32 @@
-name: Build & Push EntryTracker
+name: Build, Version, & Push EntryTracker
 
 on:
-  workflow_dispatch:
+  workflow_dispatch:    # allows manual runs
   push:
-    branches: [ main ]
+    branches:
+      - main
 
 jobs:
   build-and-push:
     runs-on: ubuntu-latest
+
     steps:
-  # 1. Grab your code
+      # 1. Grab your code
       - name: Checkout code
         uses: actions/checkout@v4
-        
- # 2. Run Python tests
+
+      # 2. Set up Python & install dependencies
       - name: Set up Python 3.10
         uses: actions/setup-python@v4
         with:
           python-version: '3.10'
-      - name: Install dependencies
+
+      - name: Install Python deps
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
-          
- # 3. Run unit tests
+
+      # 3. Smoke-test your app via HTTP
       - name: Start app in background
         run: nohup python app.py &
 
@@ -31,23 +34,16 @@ jobs:
         run: |
           sleep 5
           curl --fail http://localhost:5000/
-           # ▶︎ New: Part “Version bump”
-           
- # 4. Versioning          
+
+      # 4. Version bump (patch)
       - name: Bump patch version
         id: bump
         run: |
-          # read the current version
           CURRENT=$(cat version.txt)
-          echo "Current version: $CURRENT"
-          # split into MAJOR, MINOR, PATCH
           IFS='.' read -r MAJOR MINOR PATCH <<< "$CURRENT"
           PATCH=$((PATCH + 1))
           NEW="${MAJOR}.${MINOR}.${PATCH}"
-          echo "Bumped to: $NEW"
-          # write it back
           echo "$NEW" > version.txt
-          # expose for later steps
           echo "new_version=$NEW" >> $GITHUB_OUTPUT
 
       - name: Commit version bump
@@ -57,14 +53,25 @@ jobs:
           file_pattern: version.txt
           branch: main
 
-      # ▶︎ Modified Package step: tag with version
+      # 5. Package into Docker image with the new version tag
       - name: Build Docker image
         run: |
           docker build \
             -t ${{ secrets.ECR_REPOSITORY }}:${{ steps.bump.outputs.new_version }} \
             .
 
-      # ▶︎ Push with version tag (instead of "latest")
+      # 6. Authenticate with ECR
+      - name: Login to ECR
+        env:
+          AWS_REGION: ${{ secrets.AWS_REGION }}
+        run: |
+          aws ecr get-login-password \
+            --region $AWS_REGION \
+          | docker login \
+            --username AWS \
+            --password-stdin ${{ secrets.ECR_REPOSITORY }}
+
+      # 7. Push the versioned image to ECR
       - name: Push image to ECR
         run: |
           docker push ${{ secrets.ECR_REPOSITORY }}:${{ steps.bump.outputs.new_version }}
