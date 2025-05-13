@@ -53,10 +53,13 @@ jobs:
           file_pattern: version.txt
           branch: main
 
-   #   # 5. Package into Docker image with the new version tag
-   #   - name: Build Docker image
-   #     run: |
-   #       docker build \
+      # 5. Package into Docker image with the new version tag
+      - name: Build Docker image
+        run: |
+          docker build \
+             -t entrytracker:${{ steps.bump.outputs.new_version }} \
+             .
+         # the step below is after i got ECR    
    #         -t ${{ secrets.ECR_REPOSITORY }}:${{ steps.bump.outputs.new_version }} \
    #         .
 
