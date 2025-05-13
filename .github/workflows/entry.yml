@@ -1,1 +1,70 @@
+name: Build & Push EntryTracker
 
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    steps:
+  # 1. Grab your code
+      - name: Checkout code
+        uses: actions/checkout@v4
+        
+ # 2. Run Python tests
+      - name: Set up Python 3.10
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          
+ # 3. Run unit tests
+      - name: Start app in background
+        run: nohup python app.py &
+
+      - name: Smoke-test HTTP
+        run: |
+          sleep 5
+          curl --fail http://localhost:5000/
+           # ▶︎ New: Part “Version bump”
+           
+ # 4. Versioning          
+      - name: Bump patch version
+        id: bump
+        run: |
+          # read the current version
+          CURRENT=$(cat version.txt)
+          echo "Current version: $CURRENT"
+          # split into MAJOR, MINOR, PATCH
+          IFS='.' read -r MAJOR MINOR PATCH <<< "$CURRENT"
+          PATCH=$((PATCH + 1))
+          NEW="${MAJOR}.${MINOR}.${PATCH}"
+          echo "Bumped to: $NEW"
+          # write it back
+          echo "$NEW" > version.txt
+          # expose for later steps
+          echo "new_version=$NEW" >> $GITHUB_OUTPUT
+
+      - name: Commit version bump
+        uses: stefanzweifel/git-auto-commit-action@v4
+        with:
+          commit_message: "CI: bump version to ${{ steps.bump.outputs.new_version }}"
+          file_pattern: version.txt
+          branch: main
+
+      # ▶︎ Modified Package step: tag with version
+      - name: Build Docker image
+        run: |
+          docker build \
+            -t ${{ secrets.ECR_REPOSITORY }}:${{ steps.bump.outputs.new_version }} \
+            .
+
+      # ▶︎ Push with version tag (instead of "latest")
+      - name: Push image to ECR
+        run: |
+          docker push ${{ secrets.ECR_REPOSITORY }}:${{ steps.bump.outputs.new_version }}
