@@ -52,7 +52,6 @@ jobs:
       - name: Commit version bump
         uses: stefanzweifel/git-auto-commit-action@v4
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
           commit_message: "CI: bump version to ${{ steps.bump.outputs.new_version }}"
           file_pattern: version.txt
           branch: main
