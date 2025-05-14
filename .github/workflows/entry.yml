@@ -59,25 +59,22 @@ jobs:
       # 5. Package into Docker image with the new version tag
       - name: Build Docker image
         run: |
-          docker build \
-             -t entrytracker:${{ steps.bump.outputs.new_version }} \
-             .
-         # the step below is after i got ECR    
-   #         -t ${{ secrets.ECR_REPOSITORY }}:${{ steps.bump.outputs.new_version }} \
-   #         .
-
+          docker build \    
+          -t ${{ secrets.ECR_REPOSITORY }}:${{ steps.bump.outputs.new_version }} \
+          .
+             
       # 6. Authenticate with ECR
-   #    - name: Login to ECR
-   #      env:
-   #        AWS_REGION: ${{ secrets.AWS_REGION }}
-   #      run: |
-   #        aws ecr get-login-password \
-   #          --region $AWS_REGION \
-   #        | docker login \
-   #          --username AWS \
-   #        --password-stdin ${{ secrets.ECR_REPOSITORY }}
+      - name: Login to ECR
+        env:
+          AWS_REGION: ${{ secrets.AWS_REGION }}
+        run: |
+          aws ecr get-login-password \
+            --region $AWS_REGION \
+             | docker login \
+            --username AWS \
+            --password-stdin ${{ secrets.ECR_REPOSITORY }}
 
-   #   # 7. Push the versioned image to ECR
-   #   - name: Push image to ECR
-   #     run: |
-   #       docker push ${{ secrets.ECR_REPOSITORY }}:${{ steps.bump.outputs.new_version }}
+      #   # 7. Push the versioned image to ECR
+      - name: Push image to ECR
+        run: |
+          docker push ${{ secrets.ECR_REPOSITORY }}:${{ steps.bump.outputs.new_version }}
