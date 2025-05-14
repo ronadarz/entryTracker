@@ -58,10 +58,7 @@ jobs:
 
       # 5. Package into Docker image with the new version tag
       - name: Build Docker image
-        run: |
-          docker build \    
-          -t ${{ secrets.ECR_REPOSITORY }}:${{ steps.bump.outputs.new_version }} \
-          .
+        run: docker build -t ${{ secrets.ECR_REPOSITORY }}:${{ steps.bump.outputs.new_version }} .
              
       # 6. Authenticate with ECR
       - name: Login to ECR
