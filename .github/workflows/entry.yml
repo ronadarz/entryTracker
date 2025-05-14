@@ -60,18 +60,24 @@ jobs:
       - name: Build Docker image
         run: docker build -t ${{ secrets.ECR_REPOSITORY }}:${{ steps.bump.outputs.new_version }} .
              
-      # 6. Authenticate with ECR
+       # 6. Configure AWS credentials for CLI
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region:            ${{ secrets.AWS_REGION }}
+
+      # 7. Authenticate with ECR
       - name: Login to ECR
-        env:
-          AWS_REGION: ${{ secrets.AWS_REGION }}
         run: |
           aws ecr get-login-password \
-            --region $AWS_REGION \
-             | docker login \
+            --region ${{ secrets.AWS_REGION }} \
+          | docker login \
             --username AWS \
             --password-stdin ${{ secrets.ECR_REPOSITORY }}
 
-      #   # 7. Push the versioned image to ECR
+      # 8. Push the versioned image to ECR
       - name: Push image to ECR
         run: |
           docker push ${{ secrets.ECR_REPOSITORY }}:${{ steps.bump.outputs.new_version }}
