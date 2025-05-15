@@ -12,7 +12,8 @@ on:
 jobs:
   build-and-push:
     runs-on: ubuntu-latest
-
+    outputs:
+      new_version: ${{ steps.bump.outputs.new_version }}
     steps:
       # 1. Grab your code
       - name: Checkout code
@@ -81,3 +82,46 @@ jobs:
       - name: Push image to ECR
         run: |
           docker push ${{ secrets.ECR_REPOSITORY }}:${{ steps.bump.outputs.new_version }}
+
+  deploy:
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy to EC2 via SSH
+        uses: appleboy/ssh-action@v0.1.9
+        with:
+          host:     ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key:      ${{ secrets.EC2_SSH_KEY }}
+          script: |
+            set -e
+
+            # Grab the version your CI just bumped
+            TAG=${{ needs.build-and-push.outputs.new_version }}
+
+            echo "Deploying version: $TAG"
+
+            # 1. Authenticate to ECR
+            aws ecr get-login-password \
+              --region ${{ secrets.AWS_REGION }} \
+            | docker login \
+                --username AWS \
+                --password-stdin ${{ secrets.ECR_REPOSITORY }}
+
+            # 2. Pull the new image
+            docker pull ${{ secrets.ECR_REPOSITORY }}:$TAG
+
+            # 3. Update your compose file
+            cd /home/ec2-user
+            sed -i "s~image:.*~image: ${{ secrets.ECR_REPOSITORY }}:$TAG~" docker-compose.yml
+
+            # 4. Redeploy via Compose
+            docker compose pull
+            docker compose up -d --remove-orphans
+
+            # 5. Cleanup
+            docker image prune -f
+        env:
+          AWS_REGION:    ${{ secrets.AWS_REGION }}
+          ECR_REPOSITORY: ${{ secrets.ECR_REPOSITORY }}
+
