@@ -90,15 +90,12 @@ jobs:
       - name: Deploy to EC2 via SSH
         uses: appleboy/ssh-action@v0.1.9
         with:
-          host:     ${{ secrets.EC2_HOST }}
-          username: ${{ secrets.EC2_USER }}
-          key:      ${{ secrets.EC2_SSH_KEY }}
+          host:       ${{ secrets.EC2_HOST }}
+          username:   ${{ secrets.EC2_USER }}
+          key:        ${{ secrets.EC2_SSH_KEY }}
           script: |
             set -e
-
-            # Grab the version your CI just bumped
             TAG=${{ needs.build-and-push.outputs.new_version }}
-
             echo "Deploying version: $TAG"
 
             # 1. Authenticate to ECR
@@ -119,9 +116,5 @@ jobs:
             docker compose pull
             docker compose up -d --remove-orphans
 
-            # 5. Cleanup
+            # 5. Cleanup old images
             docker image prune -f
-        env:
-          AWS_REGION:    ${{ secrets.AWS_REGION }}
-          ECR_REPOSITORY: ${{ secrets.ECR_REPOSITORY }}
-
