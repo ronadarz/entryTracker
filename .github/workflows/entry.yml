@@ -83,40 +83,36 @@ jobs:
         run: |
           docker push ${{ secrets.ECR_REPOSITORY }}:${{ steps.bump.outputs.new_version }}
 
-deploy:
-  needs: build-and-push
-  runs-on: ubuntu-latest
-  steps:
-    - name: Deploy to EC2 via SSH
-      uses: appleboy/ssh-action@v0.1.9
-      with:
-        host:     ${{ secrets.EC2_HOST }}
-        username: ${{ secrets.EC2_USER }}
-        key:      ${{ secrets.EC2_SSH_KEY }}
-        script: |
-          set -e
-          TAG=${{ needs.build-and-push.outputs.new_version }}
-          AWS_ECR=${{ secrets.ECR_REPOSITORY }}
+  deploy:
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy to EC2 via SSH
+        uses: appleboy/ssh-action@v0.1.9
+        with:
+          host:     ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key:      ${{ secrets.EC2_SSH_KEY }}
+          script: |
+            set -e
+            TAG=${{ needs.build-and-push.outputs.new_version }}
+            AWS_ECR=${{ secrets.ECR_REPOSITORY }}
 
-          # 1. Login to ECR
-          aws ecr get-login-password \
+            # 1. Login to ECR
+            aws ecr get-login-password \
             --region ${{ secrets.AWS_REGION }} \
-          | docker login --username AWS --password-stdin $AWS_ECR
+            | docker login --username AWS --password-stdin $AWS_ECR
 
-          # 2. Pull the new web image
-          docker pull $AWS_ECR:$TAG
+            # 2. Pull the new web image
+            docker pull $AWS_ECR:$TAG
 
-          # 3. Only update the web service’s image line
-          cd /home/ec2-user
-          sed -i "s~image: ${AWS_ECR}:.*~image: ${AWS_ECR}:${TAG}~" docker-compose.yml
+            # 3. Only update the web service’s image line
+            cd /home/ec2-user
+            sed -i "s~image: ${AWS_ECR}:.*~image: ${AWS_ECR}:${TAG}~" docker-compose.yml
 
-          # 4. Re-deploy with Compose
-          docker compose pull
-          docker compose up -d --remove-orphans
+            # 4. Re-deploy with Compose
+            docker compose pull
+            docker compose up -d --remove-orphans
 
-          # 5. Cleanup
-          docker image prune -f
-
-
-            # 5. Cleanup old images
+            # 5. Cleanup
             docker image prune -f
