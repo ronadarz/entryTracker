@@ -95,34 +95,37 @@ jobs:
           key:      ${{ secrets.EC2_SSH_KEY }}
           script: |
             script: |
-            set -e
-            TAG=${{ needs.build-and-push.outputs.new_version }}
-            ECR=${{ secrets.ECR_REPOSITORY }}
-            COMPOSE=/home/ec2-user/docker-compose.yml
-            AWS_REGION=${{ secrets.AWS_REGION }}
+              set -e
+              TAG=${{ needs.build-and-push.outputs.new_version }}
+              ECR=${{ secrets.ECR_REPOSITORY }}
+              COMPOSE=/home/ec2-user/docker-compose.yml
+              REGION=${{ secrets.AWS_REGION }}
 
-            # 0. Install yq once (5 MB binary, harmless if already present)
-            if ! command -v yq >/dev/null 2>&1; then
-              sudo curl -sSL \
-              https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64 \
-              -o /usr/local/bin/yq && sudo chmod +x /usr/local/bin/yq
-            fi
+              # 0. install yq once
+              if ! command -v yq >/dev/null 2>&1; then
+                sudo curl -sSL \
+                  https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64 \
+                  -o /usr/local/bin/yq && sudo chmod +x /usr/local/bin/yq
+              fi
 
-            # 1. Log in to your private ECR
-            aws ecr get-login-password --region "$AWS_REGION" \
-            | docker login --username AWS --password-stdin "$ECR"
+              # 1. login to ECR
+              aws ecr get-login-password --region "$REGION" \
+                | docker login --username AWS --password-stdin "$ECR"
 
-            # 2. Pull the new web image explicitly
-            docker pull "$ECR:$TAG"
+              # 2. pull new image
+              docker pull "$ECR:$TAG"
 
-            # 3. Rewrite ONLY web.image in docker-compose.yml
-            yq -i '.services.web.image = "'"$ECR:$TAG"'"' "$COMPOSE"
+              # 3. safe-edit YAML (fails if path missing)
+              yq -i '.services.web.image = "'"$ECR:$TAG"'"' "$COMPOSE"
+              echo "Compose now points at:" $(yq '.services.web.image' "$COMPOSE")
 
-            # 4. Recreate the web container (leave MySQL untouched)
-            cd /home/ec2-user
-            docker compose pull web                     # ensures local cache is fresh
-            docker compose up -d --force-recreate web   # restart only web
+              # 4. validate file before deploy
+              docker compose -f "$COMPOSE" config >/dev/null
 
-            # 5. Optional: remove dangling layers >24 h old
-            docker image prune -a --filter "until=24h" -f
+              # 5. roll just the web service
+              cd /home/ec2-user
+              docker compose pull web
+              docker compose up -d --force-recreate web
 
+              # 6. prune images older than 24 h
+              docker image prune -a --filter "until=24h" -f
