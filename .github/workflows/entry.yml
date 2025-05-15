@@ -97,31 +97,32 @@ jobs:
             script: |
             set -e
             TAG=${{ needs.build-and-push.outputs.new_version }}
-            AWS_ECR=${{ secrets.ECR_REPOSITORY }}
+            ECR=${{ secrets.ECR_REPOSITORY }}
             COMPOSE=/home/ec2-user/docker-compose.yml
+            AWS_REGION=${{ secrets.AWS_REGION }}
 
-            # 0. Install yq (one-time)
+            # 0. Install yq once (5 MB binary, harmless if already present)
             if ! command -v yq >/dev/null 2>&1; then
               sudo curl -sSL \
-                https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64 \
-                -o /usr/local/bin/yq && sudo chmod +x /usr/local/bin/yq
+              https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64 \
+              -o /usr/local/bin/yq && sudo chmod +x /usr/local/bin/yq
             fi
 
-            # 1. Login to ECR
-            aws ecr get-login-password \
-            --region ${{ secrets.AWS_REGION }} \
-            | docker login --username AWS --password-stdin $AWS_ECR
+            # 1. Log in to your private ECR
+            aws ecr get-login-password --region "$AWS_REGION" \
+            | docker login --username AWS --password-stdin "$ECR"
 
-            # 2. Pull the new web image
-            docker pull $AWS_ECR:$TAG
+            # 2. Pull the new web image explicitly
+            docker pull "$ECR:$TAG"
 
-            # 2.5. Rewrite ONLY the web service’s image line
-            yq -i '.services.web.image = "'"$AWS_ECR:$TAG"'"' $COMPOSE
+            # 3. Rewrite ONLY web.image in docker-compose.yml
+            yq -i '.services.web.image = "'"$ECR:$TAG"'"' "$COMPOSE"
 
-            # 3. Re-deploy with Compose
+            # 4. Recreate the web container (leave MySQL untouched)
             cd /home/ec2-user
-            docker compose pull web
-            docker compose up -d web
+            docker compose pull web                     # ensures local cache is fresh
+            docker compose up -d --force-recreate web   # restart only web
 
-            # 4. Cleanup
-            docker image prune -f
+            # 5. Optional: remove dangling layers >24 h old
+            docker image prune -a --filter "until=24h" -f
+
