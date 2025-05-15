@@ -84,9 +84,9 @@ jobs:
           docker push ${{ secrets.ECR_REPOSITORY }}:${{ steps.bump.outputs.new_version }}
 
   deploy:
-    needs: build-and-push
-    runs-on: ubuntu-latest
-    steps:
+      needs: build-and-push
+      runs-on: ubuntu-latest
+      steps:
       - name: Deploy to EC2 via SSH
         uses: appleboy/ssh-action@v0.1.9
         with:
@@ -97,6 +97,7 @@ jobs:
             set -e
             TAG=${{ needs.build-and-push.outputs.new_version }}
             AWS_ECR=${{ secrets.ECR_REPOSITORY }}
+            COMPOSE=/home/ec2-user/docker-compose.yml
 
             # 1. Login to ECR
             aws ecr get-login-password \
@@ -106,9 +107,12 @@ jobs:
             # 2. Pull the new web image
             docker pull $AWS_ECR:$TAG
 
+            # 2.5. Rewrite ONLY the web service’s image line
+            sed -i '/^  web:/,/^[^ ]/ s|image:.*|    image: '"$AWS_ECR:$TAG"'|' $COMPOSE
+
             # 3. Re-deploy with Compose
-            docker compose pull
-            docker compose up -d --remove-orphans
+            docker compose pull web
+            docker compose up -d web
 
             # 4. Cleanup
             docker image prune -f
