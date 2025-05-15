@@ -106,13 +106,9 @@ jobs:
             # 2. Pull the new web image
             docker pull $AWS_ECR:$TAG
 
-            # 3. Only update the web service’s image line
-            cd /home/ec2-user
-            sed -i "s~image: ${AWS_ECR}:.*~image: ${AWS_ECR}:${TAG}~" docker-compose.yml
-
-            # 4. Re-deploy with Compose
+            # 3. Re-deploy with Compose
             docker compose pull
             docker compose up -d --remove-orphans
 
-            # 5. Cleanup
+            # 4. Cleanup
             docker image prune -f
