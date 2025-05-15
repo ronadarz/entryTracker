@@ -94,10 +94,18 @@ jobs:
           username: ${{ secrets.EC2_USER }}
           key:      ${{ secrets.EC2_SSH_KEY }}
           script: |
+            script: |
             set -e
             TAG=${{ needs.build-and-push.outputs.new_version }}
             AWS_ECR=${{ secrets.ECR_REPOSITORY }}
             COMPOSE=/home/ec2-user/docker-compose.yml
+
+            # 0. Install yq (one-time)
+            if ! command -v yq >/dev/null 2>&1; then
+              sudo curl -sSL \
+                https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64 \
+                -o /usr/local/bin/yq && sudo chmod +x /usr/local/bin/yq
+            fi
 
             # 1. Login to ECR
             aws ecr get-login-password \
@@ -108,9 +116,10 @@ jobs:
             docker pull $AWS_ECR:$TAG
 
             # 2.5. Rewrite ONLY the web service’s image line
-            sed -i '/^  web:/,/^[^ ]/ s|image:.*|    image: '"$AWS_ECR:$TAG"'|' $COMPOSE
+            yq -i '.services.web.image = "'"$AWS_ECR:$TAG"'"' $COMPOSE
 
             # 3. Re-deploy with Compose
+            cd /home/ec2-user
             docker compose pull web
             docker compose up -d web
 
