@@ -36,7 +36,7 @@ jobs:
 
       - name: Smoke-test HTTP
         run: |
-          sleep 5
+          sleep 6
           curl --fail http://localhost:5000/
 
       # 4. Version bump (patch)
